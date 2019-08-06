@@ -118,6 +118,10 @@ var FieldOnlyMarkers = []*definitionWithHelp{
 		WithHelp(markers.SimpleHelp("CRD validation", "specifies that this field is required.")),
 	must(markers.MakeDefinition("k8s:optional", markers.DescribesField, struct{}{})).
 		WithHelp(markers.SimpleHelp("CRD validation", "specifies that this field is optional.")),
+
+	must(markers.MakeDefinition("kubebuilder:validation:OneOf", markers.DescribesField, struct{}{})).
+		WithHelp(markers.SimpleHelp("CRD validation", "specifies that this field is part of a oneOf group")),
+
 	must(markers.MakeDefinition("nullable", markers.DescribesField, Nullable{})).
 		WithHelp(Nullable{}.Help()),
 
