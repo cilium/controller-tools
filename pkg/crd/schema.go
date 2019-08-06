@@ -384,6 +384,10 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiext.JSON
 		fieldName := jsonOpts[0]
 		inline = inline || fieldName == "" // anonymous fields are inline fields in YAML/JSON
 
+		fieldMarkedOptional := (field.Markers.Get("kubebuilder:validation:Optional") != nil || field.Markers.Get("optional") != nil)
+		fieldMarkedRequired := (field.Markers.Get("kubebuilder:validation:Required") != nil)
+		fieldMarkedOneOf := (field.Markers.Get("kubebuilder:validation:OneOf") != nil)
+
 		// if no default required mode is set, default to required
 		defaultMode := "required"
 		if ctx.PackageMarkers.Get("kubebuilder:validation:Optional") != nil {
@@ -393,15 +397,15 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiext.JSON
 		switch defaultMode {
 		// if this package isn't set to optional default...
 		case "required":
-			// ...everything that's not inline, omitempty, or explicitly optional is required
-			if !inline && !omitEmpty && field.Markers.Get("kubebuilder:validation:Optional") == nil && field.Markers.Get("optional") == nil {
+			// ...everything that's not inline, not omitempty, not part of a oneOf group, and not explicitly optional is required
+			if !inline && !omitEmpty && !fieldMarkedOneOf && !fieldMarkedOptional {
 				props.Required = append(props.Required, fieldName)
 			}
 
 		// if this package isn't set to required default...
 		case "optional":
-			// ...everything that isn't explicitly required is optional
-			if field.Markers.Get("kubebuilder:validation:Required") != nil {
+			// ...everything that's part of a oneOf group, or not explicitly required is optional
+			if !fieldMarkedOneOf && fieldMarkedRequired {
 				props.Required = append(props.Required, fieldName)
 			}
 		}
@@ -411,6 +415,13 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiext.JSON
 			propSchema = &apiext.JSONSchemaProps{}
 		} else {
 			propSchema = typeToSchema(ctx.ForInfo(&markers.TypeInfo{}), field.RawField.Type)
+		}
+		// process oneOf groups
+		if fieldMarkedOneOf {
+			props.OneOf = append(props.OneOf, apiext.JSONSchemaProps{
+				Properties: map[string]apiext.JSONSchemaProps{fieldName: {}},
+				Required:   []string{fieldName},
+			})
 		}
 		propSchema.Description = field.Doc
 
