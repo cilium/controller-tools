@@ -221,9 +221,21 @@ func localNamedToSchema(ctx *schemaContext, ident *ast.Ident) *apiext.JSONSchema
 		if err != nil {
 			ctx.pkg.AddError(loader.ErrFromNode(err, ident))
 		}
+
+		// Check for type aliasing. If the type is not an alias, then handle it
+		// as a basic type.
+		if basicInfo.Name() == ident.Name {
+			return &apiext.JSONSchemaProps{
+				Type:   typ,
+				Format: fmt,
+			}
+		}
+
+		// Type alias to a basic type.
+		ctx.requestSchema("", ident.Name)
+		link := TypeRefLink("", ident.Name)
 		return &apiext.JSONSchemaProps{
-			Type:   typ,
-			Format: fmt,
+			Ref: &link,
 		}
 	}
 	// NB(directxman12): if there are dot imports, this might be an external reference,
