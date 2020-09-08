@@ -553,6 +553,7 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiextensio
 		fieldMarkedOptional := (field.Markers.Get("kubebuilder:validation:Optional") != nil || field.Markers.Get("optional") != nil)
 		fieldMarkedRequired := (field.Markers.Get("kubebuilder:validation:Required") != nil)
 		fieldMarkedOneOf := (field.Markers.Get("kubebuilder:validation:OneOf") != nil)
+		fieldMarkedAnyOf := (field.Markers.Get("kubebuilder:validation:AnyOf") != nil)
 
 		// if no default required mode is set, default to required
 		defaultMode := "required"
@@ -582,8 +583,8 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiextensio
 
 		// if this package isn't set to optional default...
 		case defaultMode == "required":
-			// ...everything that's not inline / omitempty / omitzero, not part of a oneOf group, and not explicitly optional is required
-			if !inline && !omitEmpty && !fieldMarkedOneOf && !fieldMarkedOptional {
+			// ...everything that's not inline / omitempty / omitzero, not part of a oneOf/anyOf group, and not explicitly optional is required
+			if !inline && !omitEmpty && !fieldMarkedOneOf && !fieldMarkedAnyOf && !fieldMarkedOptional {
 				if exactlyOneOf.Has(fieldName) || atMostOneOf.Has(fieldName) || atLeastOneOf.Has(fieldName) {
 					ctx.pkg.AddError(loader.ErrFromNode(fmt.Errorf("field %s is part of OneOf constraint and must have omitempty or omitzero tag", fieldName), structType))
 					return props
@@ -593,8 +594,8 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiextensio
 
 		// if this package isn't set to required default...
 		case defaultMode == "optional":
-			// ...everything that's part of a oneOf group, or not explicitly required is optional
-			if !fieldMarkedOneOf && fieldMarkedRequired {
+			// ...everything that's part of a oneOf/anyOf group, or not explicitly required is optional
+			if !fieldMarkedOneOf && !fieldMarkedAnyOf && fieldMarkedRequired {
 				props.Required = append(props.Required, fieldName)
 			}
 		}
@@ -608,6 +609,13 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiextensio
 		// process oneOf groups
 		if fieldMarkedOneOf {
 			props.OneOf = append(props.OneOf, apiextensionsv1.JSONSchemaProps{
+				Properties: map[string]apiextensionsv1.JSONSchemaProps{fieldName: {}},
+				Required:   []string{fieldName},
+			})
+		}
+		// process anyOf groups
+		if fieldMarkedAnyOf {
+			props.AnyOf = append(props.AnyOf, apiextensionsv1.JSONSchemaProps{
 				Properties: map[string]apiextensionsv1.JSONSchemaProps{fieldName: {}},
 				Required:   []string{fieldName},
 			})
