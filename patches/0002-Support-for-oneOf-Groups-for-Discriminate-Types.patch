@@ -1,0 +1,77 @@
+From 675bb6189355a799ce77ef6da93e94f40d5001b7 Mon Sep 17 00:00:00 2001
+From: Matt Ellison <matt@arroyo.io>
+Date: Tue, 6 Aug 2019 09:25:28 -0400
+Subject: [PATCH 2/3] Support for oneOf Groups for Discriminate Types
+
+Signed-off-by: Chris Tarazi <tarazichris@gmail.com>
+---
+ pkg/crd/markers/validation.go |  3 +++
+ pkg/crd/schema.go             | 19 +++++++++++++++----
+ 2 files changed, 18 insertions(+), 4 deletions(-)
+
+diff --git a/pkg/crd/markers/validation.go b/pkg/crd/markers/validation.go
+index 5a038e4e..4fd381db 100644
+--- a/pkg/crd/markers/validation.go
++++ b/pkg/crd/markers/validation.go
+@@ -78,6 +78,9 @@ var FieldOnlyMarkers = []*definitionWithHelp{
+ 	must(markers.MakeDefinition("optional", markers.DescribesField, struct{}{})).
+ 		WithHelp(markers.SimpleHelp("CRD validation", "specifies that this field is optional, if fields are required by default.")),
+ 
++	must(markers.MakeDefinition("kubebuilder:validation:OneOf", markers.DescribesField, struct{}{})).
++		WithHelp(markers.SimpleHelp("CRD validation", "specifies that this field is part of a oneOf group")),
++
+ 	must(markers.MakeDefinition("nullable", markers.DescribesField, Nullable{})).
+ 		WithHelp(Nullable{}.Help()),
+ 
+diff --git a/pkg/crd/schema.go b/pkg/crd/schema.go
+index 717819e7..a4f1f357 100644
+--- a/pkg/crd/schema.go
++++ b/pkg/crd/schema.go
+@@ -369,6 +369,10 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiext.JSON
+ 		fieldName := jsonOpts[0]
+ 		inline = inline || fieldName == "" // anonymous fields are inline fields in YAML/JSON
+ 
++		fieldMarkedOptional := (field.Markers.Get("kubebuilder:validation:Optional") != nil || field.Markers.Get("optional") != nil)
++		fieldMarkedRequired := (field.Markers.Get("kubebuilder:validation:Required") != nil)
++		fieldMarkedOneOf := (field.Markers.Get("kubebuilder:validation:OneOf") != nil)
++
+ 		// if no default required mode is set, default to required
+ 		defaultMode := "required"
+ 		if ctx.PackageMarkers.Get("kubebuilder:validation:Optional") != nil {
+@@ -378,15 +382,15 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiext.JSON
+ 		switch defaultMode {
+ 		// if this package isn't set to optional default...
+ 		case "required":
+-			// ...everything that's not inline, omitempty, or explicitly optional is required
+-			if !inline && !omitEmpty && field.Markers.Get("kubebuilder:validation:Optional") == nil && field.Markers.Get("optional") == nil {
++			// ...everything that's not inline, not omitempty, not part of a oneOf group, and not explicitly optional is required
++			if !inline && !omitEmpty && !fieldMarkedOneOf && !fieldMarkedOptional {
+ 				props.Required = append(props.Required, fieldName)
+ 			}
+ 
+ 		// if this package isn't set to required default...
+ 		case "optional":
+-			// ...everything that isn't explicitly required is optional
+-			if field.Markers.Get("kubebuilder:validation:Required") != nil {
++			// ...everything that's part of a oneOf group, or not explicitly required is optional
++			if !fieldMarkedOneOf && fieldMarkedRequired {
+ 				props.Required = append(props.Required, fieldName)
+ 			}
+ 		}
+@@ -397,6 +401,13 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiext.JSON
+ 		} else {
+ 			propSchema = typeToSchema(ctx.ForInfo(&markers.TypeInfo{}), field.RawField.Type)
+ 		}
++		// process oneOf groups
++		if fieldMarkedOneOf {
++			props.OneOf = append(props.OneOf, apiext.JSONSchemaProps{
++				Properties: map[string]apiext.JSONSchemaProps{fieldName: {}},
++				Required:   []string{fieldName},
++			})
++		}
+ 		propSchema.Description = field.Doc
+ 
+ 		applyMarkers(ctx, field.Markers, propSchema, field.RawField)
+-- 
+2.32.0
+

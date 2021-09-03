@@ -1,0 +1,56 @@
+From 1de6ae67aa6ca3b4d2b6158ac9f4cdebef783bf5 Mon Sep 17 00:00:00 2001
+From: Chris Tarazi <tarazichris@gmail.com>
+Date: Mon, 3 Aug 2020 15:27:41 -0700
+Subject: [PATCH 1/3] Support type aliasing to basic types
+
+Previously, validation schema generation was skipped on a type alias:
+
+```
+type A = B
+```
+
+Whereas, a new type was fine:
+
+```
+type A B
+```
+
+This commit implements support for generating validation schemas for
+type aliases to basic types, i.e. string, int, etc.
+
+Signed-off-by: Chris Tarazi <tarazichris@gmail.com>
+---
+ pkg/crd/schema.go | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/pkg/crd/schema.go b/pkg/crd/schema.go
+index 0f682808..717819e7 100644
+--- a/pkg/crd/schema.go
++++ b/pkg/crd/schema.go
+@@ -209,9 +209,21 @@ func localNamedToSchema(ctx *schemaContext, ident *ast.Ident) *apiext.JSONSchema
+ 		if err != nil {
+ 			ctx.pkg.AddError(loader.ErrFromNode(err, ident))
+ 		}
++
++		// Check for type aliasing. If the type is not an alias, then handle it
++		// as a basic type.
++		if basicInfo.Name() == ident.Name {
++			return &apiext.JSONSchemaProps{
++				Type:   typ,
++				Format: fmt,
++			}
++		}
++
++		// Type alias to a basic type.
++		ctx.requestSchema("", ident.Name)
++		link := TypeRefLink("", ident.Name)
+ 		return &apiext.JSONSchemaProps{
+-			Type:   typ,
+-			Format: fmt,
++			Ref: &link,
+ 		}
+ 	}
+ 	// NB(directxman12): if there are dot imports, this might be an external reference,
+-- 
+2.32.0
+
