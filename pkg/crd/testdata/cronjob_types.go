@@ -158,6 +158,13 @@ type CronJobSpec struct {
 	// This tests that the schemaless marker works
 	// +kubebuilder:validation:Schemaless
 	Schemaless []byte `json:"schemaless,omitempty"`
+
+	// This tests that unexported fields are skipped in the schema generation
+	unexportedField string
+
+	// This tests that both unexported and exported inline fields are not skipped in the schema generation
+	unexportedStruct `json:",inline"`
+	ExportedStruct   `json:",inline"`
 }
 
 // +kubebuilder:validation:Type=object
@@ -205,6 +212,22 @@ type MinMaxObject struct {
 	Foo string `json:"foo,omitempty"`
 	Bar string `json:"bar,omitempty"`
 	Baz string `json:"baz,omitempty"`
+}
+
+type unexportedStruct struct {
+	// This tests that exported fields are not skipped in the schema generation
+	Foo string `json:"foo"`
+
+	// This tests that unexported fields are skipped in the schema generation
+	bar string
+}
+
+type ExportedStruct struct {
+	// This tests that exported fields are not skipped in the schema generation
+	Baz string `json:"baz"`
+
+	// This tests that unexported fields are skipped in the schema generation
+	qux string
 }
 
 type RootObject struct {

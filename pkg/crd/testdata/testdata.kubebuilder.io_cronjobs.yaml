@@ -52,6 +52,9 @@ spec:
                 - name
                 - secondary
                 x-kubernetes-list-type: map
+              baz:
+                description: This tests that exported fields are not skipped in the schema generation
+                type: string
               binaryName:
                 description: This tests byte slice schema generation.
                 format: byte
@@ -116,6 +119,9 @@ spec:
                 description: The number of failed finished jobs to retain. This is a pointer to distinguish between explicit zero and not specified.
                 format: int32
                 type: integer
+              foo:
+                description: This tests that exported fields are not skipped in the schema generation
+                type: string
               jobTemplate:
                 description: Specifies the job that will be created when executing a CronJob.
                 properties:
@@ -4035,12 +4041,14 @@ spec:
                 x-kubernetes-preserve-unknown-fields: true
             required:
             - associativeList
+            - baz
             - binaryName
             - canBeNull
             - defaultedObject
             - defaultedSlice
             - defaultedString
             - embeddedResource
+            - foo
             - jobTemplate
             - mapOfInfo
             - patternObject
