@@ -1,4 +1,4 @@
-module github.com/christarazi/controller-tools
+module github.com/cilium/controller-tools
 
 go 1.13
 
