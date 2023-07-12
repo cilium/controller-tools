@@ -1,0 +1,238 @@
+From 76f50483de9ff30ef4026b2deab7a3d9907cac7b Mon Sep 17 00:00:00 2001
+From: William McKinnerney <williammck@users.noreply.github.com>
+Date: Mon, 31 Jan 2022 11:12:23 -0600
+Subject: [PATCH 2/2] :bug: Skip unexported fields when generating CRDs (#584)
+
+* Skip unexported fields when generating CRDs
+
+* Add generator flag to skip unexported fields
+---
+ pkg/crd/gen.go                                |  8 +++++-
+ pkg/crd/parser.go                             |  5 +++-
+ pkg/crd/parser_integration_test.go            |  5 ++--
+ pkg/crd/schema.go                             | 26 ++++++++++++-------
+ pkg/crd/testdata/cronjob_types.go             | 23 ++++++++++++++++
+ .../testdata.kubebuilder.io_cronjobs.yaml     |  8 ++++++
+ pkg/crd/zz_generated.markerhelp.go            |  4 +++
+ 7 files changed, 66 insertions(+), 13 deletions(-)
+
+diff --git a/pkg/crd/gen.go b/pkg/crd/gen.go
+index dd154c54..fef2fc61 100644
+--- a/pkg/crd/gen.go
++++ b/pkg/crd/gen.go
+@@ -58,6 +58,11 @@ type Generator struct {
+ 	// It's required to be false for v1 CRDs.
+ 	PreserveUnknownFields *bool `marker:",optional"`
+ 
++	// IgnoreUnexportedFields indicates that we should skip unexported fields.
++	//
++	// Left unspecified, the default is false.
++	IgnoreUnexportedFields *bool `marker:",optional"`
++
+ 	// AllowDangerousTypes allows types which are usually omitted from CRD generation
+ 	// because they are not recommended.
+ 	//
+@@ -100,7 +105,8 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
+ 		Collector: ctx.Collector,
+ 		Checker:   ctx.Checker,
+ 		// Perform defaulting here to avoid ambiguity later
+-		AllowDangerousTypes: g.AllowDangerousTypes != nil && *g.AllowDangerousTypes == true,
++		IgnoreUnexportedFields: g.IgnoreUnexportedFields != nil && *g.IgnoreUnexportedFields == true,
++		AllowDangerousTypes:    g.AllowDangerousTypes != nil && *g.AllowDangerousTypes == true,
+ 		// Indicates the parser on whether to register the ObjectMeta type or not
+ 		GenerateEmbeddedObjectMeta: g.GenerateEmbeddedObjectMeta != nil && *g.GenerateEmbeddedObjectMeta == true,
+ 	}
+diff --git a/pkg/crd/parser.go b/pkg/crd/parser.go
+index 164e4756..4c15de90 100644
+--- a/pkg/crd/parser.go
++++ b/pkg/crd/parser.go
+@@ -87,6 +87,9 @@ type Parser struct {
+ 	// TODO: Should we have a more formal mechanism for putting "type patterns" in each of the above categories?
+ 	AllowDangerousTypes bool
+ 
++	// IgnoreUnexportedFields specifies if unexported fields on the struct should be skipped
++	IgnoreUnexportedFields bool
++
+ 	// GenerateEmbeddedObjectMeta specifies if any embedded ObjectMeta should be generated
+ 	GenerateEmbeddedObjectMeta bool
+ }
+@@ -178,7 +181,7 @@ func (p *Parser) NeedSchemaFor(typ TypeIdent) {
+ 	// avoid tripping recursive schemata, like ManagedFields, by adding an empty WIP schema
+ 	p.Schemata[typ] = apiext.JSONSchemaProps{}
+ 
+-	schemaCtx := newSchemaContext(typ.Package, p, p.AllowDangerousTypes)
++	schemaCtx := newSchemaContext(typ.Package, p, p.AllowDangerousTypes, p.IgnoreUnexportedFields)
+ 	ctxForInfo := schemaCtx.ForInfo(info)
+ 
+ 	pkgMarkers, err := markers.PackageMarkers(p.Collector, typ.Package)
+diff --git a/pkg/crd/parser_integration_test.go b/pkg/crd/parser_integration_test.go
+index 0903ec0c..2828c329 100644
+--- a/pkg/crd/parser_integration_test.go
++++ b/pkg/crd/parser_integration_test.go
+@@ -72,8 +72,9 @@ var _ = Describe("CRD Generation From Parsing to CustomResourceDefinition", func
+ 		reg := &markers.Registry{}
+ 		Expect(crdmarkers.Register(reg)).To(Succeed())
+ 		parser := &crd.Parser{
+-			Collector: &markers.Collector{Registry: reg},
+-			Checker:   &loader.TypeChecker{},
++			Collector:              &markers.Collector{Registry: reg},
++			Checker:                &loader.TypeChecker{},
++			IgnoreUnexportedFields: true,
+ 		}
+ 		crd.AddKnownTypes(parser)
+ 
+diff --git a/pkg/crd/schema.go b/pkg/crd/schema.go
+index 5c28b627..49839d64 100644
+--- a/pkg/crd/schema.go
++++ b/pkg/crd/schema.go
+@@ -69,17 +69,19 @@ type schemaContext struct {
+ 	schemaRequester schemaRequester
+ 	PackageMarkers  markers.MarkerValues
+ 
+-	allowDangerousTypes bool
++	allowDangerousTypes    bool
++	ignoreUnexportedFields bool
+ }
+ 
+ // newSchemaContext constructs a new schemaContext for the given package and schema requester.
+ // It must have type info added before use via ForInfo.
+-func newSchemaContext(pkg *loader.Package, req schemaRequester, allowDangerousTypes bool) *schemaContext {
++func newSchemaContext(pkg *loader.Package, req schemaRequester, allowDangerousTypes, ignoreUnexportedFields bool) *schemaContext {
+ 	pkg.NeedTypesInfo()
+ 	return &schemaContext{
+-		pkg:                 pkg,
+-		schemaRequester:     req,
+-		allowDangerousTypes: allowDangerousTypes,
++		pkg:                    pkg,
++		schemaRequester:        req,
++		allowDangerousTypes:    allowDangerousTypes,
++		ignoreUnexportedFields: ignoreUnexportedFields,
+ 	}
+ }
+ 
+@@ -87,10 +89,11 @@ func newSchemaContext(pkg *loader.Package, req schemaRequester, allowDangerousTy
+ // as this one, except with the given type information.
+ func (c *schemaContext) ForInfo(info *markers.TypeInfo) *schemaContext {
+ 	return &schemaContext{
+-		pkg:                 c.pkg,
+-		info:                info,
+-		schemaRequester:     c.schemaRequester,
+-		allowDangerousTypes: c.allowDangerousTypes,
++		pkg:                    c.pkg,
++		info:                   info,
++		schemaRequester:        c.schemaRequester,
++		allowDangerousTypes:    c.allowDangerousTypes,
++		ignoreUnexportedFields: c.ignoreUnexportedFields,
+ 	}
+ }
+ 
+@@ -344,6 +347,11 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiext.JSON
+ 	}
+ 
+ 	for _, field := range ctx.info.Fields {
++		// Skip if the field is not an inline field, ignoreUnexportedFields is true, and the field is not exported
++		if field.Name != "" && ctx.ignoreUnexportedFields && !ast.IsExported(field.Name) {
++			continue
++		}
++
+ 		jsonTag, hasTag := field.Tag.Lookup("json")
+ 		if !hasTag {
+ 			// if the field doesn't have a JSON tag, it doesn't belong in output (and shouldn't exist in a serialized type)
+diff --git a/pkg/crd/testdata/cronjob_types.go b/pkg/crd/testdata/cronjob_types.go
+index 1debf05a..4a5fdf53 100644
+--- a/pkg/crd/testdata/cronjob_types.go
++++ b/pkg/crd/testdata/cronjob_types.go
+@@ -158,6 +158,13 @@ type CronJobSpec struct {
+ 	// This tests that the schemaless marker works
+ 	// +kubebuilder:validation:Schemaless
+ 	Schemaless []byte `json:"schemaless,omitempty"`
++
++	// This tests that unexported fields are skipped in the schema generation
++	unexportedField string
++
++	// This tests that both unexported and exported inline fields are not skipped in the schema generation
++	unexportedStruct `json:",inline"`
++	ExportedStruct   `json:",inline"`
+ }
+ 
+ // +kubebuilder:validation:Type=object
+@@ -207,6 +214,22 @@ type MinMaxObject struct {
+ 	Baz string `json:"baz,omitempty"`
+ }
+ 
++type unexportedStruct struct {
++	// This tests that exported fields are not skipped in the schema generation
++	Foo string `json:"foo"`
++
++	// This tests that unexported fields are skipped in the schema generation
++	bar string
++}
++
++type ExportedStruct struct {
++	// This tests that exported fields are not skipped in the schema generation
++	Baz string `json:"baz"`
++
++	// This tests that unexported fields are skipped in the schema generation
++	qux string
++}
++
+ type RootObject struct {
+ 	Nested NestedObject `json:"nested"`
+ }
+diff --git a/pkg/crd/testdata/testdata.kubebuilder.io_cronjobs.yaml b/pkg/crd/testdata/testdata.kubebuilder.io_cronjobs.yaml
+index b428194c..582ffdb0 100644
+--- a/pkg/crd/testdata/testdata.kubebuilder.io_cronjobs.yaml
++++ b/pkg/crd/testdata/testdata.kubebuilder.io_cronjobs.yaml
+@@ -52,6 +52,9 @@ spec:
+                 - name
+                 - secondary
+                 x-kubernetes-list-type: map
++              baz:
++                description: This tests that exported fields are not skipped in the schema generation
++                type: string
+               binaryName:
+                 description: This tests byte slice schema generation.
+                 format: byte
+@@ -116,6 +119,9 @@ spec:
+                 description: The number of failed finished jobs to retain. This is a pointer to distinguish between explicit zero and not specified.
+                 format: int32
+                 type: integer
++              foo:
++                description: This tests that exported fields are not skipped in the schema generation
++                type: string
+               jobTemplate:
+                 description: Specifies the job that will be created when executing a CronJob.
+                 properties:
+@@ -4035,12 +4041,14 @@ spec:
+                 x-kubernetes-preserve-unknown-fields: true
+             required:
+             - associativeList
++            - baz
+             - binaryName
+             - canBeNull
+             - defaultedObject
+             - defaultedSlice
+             - defaultedString
+             - embeddedResource
++            - foo
+             - jobTemplate
+             - mapOfInfo
+             - patternObject
+diff --git a/pkg/crd/zz_generated.markerhelp.go b/pkg/crd/zz_generated.markerhelp.go
+index 4b008f59..89d68cd4 100644
+--- a/pkg/crd/zz_generated.markerhelp.go
++++ b/pkg/crd/zz_generated.markerhelp.go
+@@ -40,6 +40,10 @@ func (Generator) Help() *markers.DefinitionHelp {
+ 				Summary: "indicates whether or not we should turn off pruning. ",
+ 				Details: "Left unspecified, it'll default to true when only a v1beta1 CRD is generated (to preserve compatibility with older versions of this tool), or false otherwise. \n It's required to be false for v1 CRDs.",
+ 			},
++			"IgnoreUnexportedFields": {
++				Summary: "indicates that we should skip unexported fields. ",
++				Details: "Left unspecified, the default is false.",
++			},
+ 			"AllowDangerousTypes": {
+ 				Summary: "allows types which are usually omitted from CRD generation because they are not recommended. ",
+ 				Details: "Currently the following additional types are allowed when this is true: float32 float64 \n Left unspecified, the default is false",
+-- 
+2.41.0.255.g8b1d071c50-goog
+

@@ -1,0 +1,46 @@
+From b72d47ee9af026510928fff652963841a033cd64 Mon Sep 17 00:00:00 2001
+From: Aleksander Mistewicz <amistewicz@google.com>
+Date: Mon, 10 Jul 2023 06:53:07 +0000
+Subject: [PATCH 1/2] Run go generate
+
+Run "go generate ./..." as otherwise "./test.sh" would produce changes
+(and thus make it harder to iterate). Go version 1.16 is used to avoid
+rewriting build tags.
+
+Signed-off-by: Aleksander Mistewicz <amistewicz@google.com>
+---
+ pkg/crd/markers/zz_generated.markerhelp.go   | 2 +-
+ pkg/schemapatcher/zz_generated.markerhelp.go | 4 ++++
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/pkg/crd/markers/zz_generated.markerhelp.go b/pkg/crd/markers/zz_generated.markerhelp.go
+index e6875bb5..2ae8d45c 100644
+--- a/pkg/crd/markers/zz_generated.markerhelp.go
++++ b/pkg/crd/markers/zz_generated.markerhelp.go
+@@ -48,7 +48,7 @@ func (DeprecatedVersion) Help() *markers.DefinitionHelp {
+ 			Details: "",
+ 		},
+ 		FieldHelp: map[string]markers.DetailedHelp{
+-			"Warning": markers.DetailedHelp{
++			"Warning": {
+ 				Summary: "message to be shown on the deprecated version",
+ 				Details: "",
+ 			},
+diff --git a/pkg/schemapatcher/zz_generated.markerhelp.go b/pkg/schemapatcher/zz_generated.markerhelp.go
+index 36cc0cba..83d36aa3 100644
+--- a/pkg/schemapatcher/zz_generated.markerhelp.go
++++ b/pkg/schemapatcher/zz_generated.markerhelp.go
+@@ -40,6 +40,10 @@ func (Generator) Help() *markers.DefinitionHelp {
+ 				Summary: "specifies the maximum description length for fields in CRD's OpenAPI schema. ",
+ 				Details: "0 indicates drop the description for all fields completely. n indicates limit the description to at most n characters and truncate the description to closest sentence boundary if it exceeds n characters.",
+ 			},
++			"GenerateEmbeddedObjectMeta": {
++				Summary: "specifies if any embedded ObjectMeta in the CRD should be generated",
++				Details: "",
++			},
+ 		},
+ 	}
+ }
+-- 
+2.41.0.255.g8b1d071c50-goog
+
