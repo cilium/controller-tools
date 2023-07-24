@@ -1,7 +1,7 @@
-From 30a503ab627482af6bb66ba1e837b9aeb93c9065 Mon Sep 17 00:00:00 2001
+From 69a313ecf7014a399ed05c38c89c2bd93ee89159 Mon Sep 17 00:00:00 2001
 From: Chris Tarazi <tarazichris@gmail.com>
 Date: Tue, 8 Sep 2020 15:27:33 -0700
-Subject: [PATCH 3/3] Implement AnyOf (anyOf) support for CRD validation
+Subject: [PATCH 3/4] Implement AnyOf (anyOf) support for CRD validation
 
 Signed-off-by: Chris Tarazi <tarazichris@gmail.com>
 ---
@@ -10,10 +10,10 @@ Signed-off-by: Chris Tarazi <tarazichris@gmail.com>
  2 files changed, 14 insertions(+), 4 deletions(-)
 
 diff --git a/pkg/crd/markers/validation.go b/pkg/crd/markers/validation.go
-index 4fd381db..87966a19 100644
+index 722e54ca..2fba83e9 100644
 --- a/pkg/crd/markers/validation.go
 +++ b/pkg/crd/markers/validation.go
-@@ -80,6 +80,8 @@ var FieldOnlyMarkers = []*definitionWithHelp{
+@@ -81,6 +81,8 @@ var FieldOnlyMarkers = []*definitionWithHelp{
  
  	must(markers.MakeDefinition("kubebuilder:validation:OneOf", markers.DescribesField, struct{}{})).
  		WithHelp(markers.SimpleHelp("CRD validation", "specifies that this field is part of a oneOf group")),
@@ -23,10 +23,10 @@ index 4fd381db..87966a19 100644
  	must(markers.MakeDefinition("nullable", markers.DescribesField, Nullable{})).
  		WithHelp(Nullable{}.Help()),
 diff --git a/pkg/crd/schema.go b/pkg/crd/schema.go
-index a4f1f357..5c28b627 100644
+index 4b52ba25..d94bd707 100644
 --- a/pkg/crd/schema.go
 +++ b/pkg/crd/schema.go
-@@ -372,6 +372,7 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiext.JSON
+@@ -379,6 +379,7 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiext.JSON
  		fieldMarkedOptional := (field.Markers.Get("kubebuilder:validation:Optional") != nil || field.Markers.Get("optional") != nil)
  		fieldMarkedRequired := (field.Markers.Get("kubebuilder:validation:Required") != nil)
  		fieldMarkedOneOf := (field.Markers.Get("kubebuilder:validation:OneOf") != nil)
@@ -34,7 +34,7 @@ index a4f1f357..5c28b627 100644
  
  		// if no default required mode is set, default to required
  		defaultMode := "required"
-@@ -382,15 +383,15 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiext.JSON
+@@ -389,15 +390,15 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiext.JSON
  		switch defaultMode {
  		// if this package isn't set to optional default...
  		case "required":
@@ -54,7 +54,7 @@ index a4f1f357..5c28b627 100644
  				props.Required = append(props.Required, fieldName)
  			}
  		}
-@@ -408,6 +409,13 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiext.JSON
+@@ -415,6 +416,13 @@ func structToSchema(ctx *schemaContext, structType *ast.StructType) *apiext.JSON
  				Required:   []string{fieldName},
  			})
  		}
@@ -69,5 +69,5 @@ index a4f1f357..5c28b627 100644
  
  		applyMarkers(ctx, field.Markers, propSchema, field.RawField)
 -- 
-2.32.0
+2.41.0
 
