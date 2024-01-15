@@ -1,0 +1,122 @@
+From e12baa8521b6c78bd6201cc0c684a8b1472aba9c Mon Sep 17 00:00:00 2001
+From: Ben Luddy <bluddy@redhat.com>
+Date: Fri, 28 Jan 2022 16:44:38 -0500
+Subject: [PATCH] Add XValidations CRD marker for KEP-2876 support.
+
+This allows generation of the x-kubernetes-validations extension for
+expression-based validation rules.
+---
+ pkg/crd/markers/validation.go                 | 20 +++++++++++++++++++
+ pkg/crd/markers/zz_generated.markerhelp.go    | 20 +++++++++++++++++++
+ pkg/crd/testdata/cronjob_types.go             |  5 +++++
+ .../testdata.kubebuilder.io_cronjobs.yaml     |  8 ++++++++
+ 4 files changed, 53 insertions(+)
+
+diff --git a/pkg/crd/markers/validation.go b/pkg/crd/markers/validation.go
+index 2fba83e9..946f2183 100644
+--- a/pkg/crd/markers/validation.go
++++ b/pkg/crd/markers/validation.go
+@@ -67,6 +67,7 @@ var ValidationMarkers = mustMakeAllWithPrefix("kubebuilder:validation", markers.
+ 	XPreserveUnknownFields{},
+ 	XEmbeddedResource{},
+ 	XIntOrString{},
++	XValidation{},
+ )
+ 
+ // FieldOnlyMarkers list field-specific validation markers (i.e. those markers that don't make
+@@ -256,6 +257,17 @@ type XIntOrString struct{}
+ // to be used only as a last resort.
+ type Schemaless struct{}
+ 
++// +controllertools:marker:generateHelp:category="CRD validation"
++// XValidation marks a field as requiring a value for which a given
++// expression evaluates to true.
++//
++// This marker may be repeated to specify multiple expressions, all of
++// which must evaluate to true.
++type XValidation struct {
++	Rule    string
++	Message string `marker:",optional"`
++}
++
+ func (m Maximum) ApplyToSchema(schema *apiext.JSONSchemaProps) error {
+ 	if schema.Type != "integer" {
+ 		return fmt.Errorf("must apply maximum to an integer")
+@@ -433,3 +445,11 @@ func (m XIntOrString) ApplyToSchema(schema *apiext.JSONSchemaProps) error {
+ }
+ 
+ func (m XIntOrString) ApplyFirst() {}
++
++func (m XValidation) ApplyToSchema(schema *apiext.JSONSchemaProps) error {
++	schema.XValidations = append(schema.XValidations, apiext.ValidationRule{
++		Rule:    m.Rule,
++		Message: m.Message,
++	})
++	return nil
++}
+diff --git a/pkg/crd/markers/zz_generated.markerhelp.go b/pkg/crd/markers/zz_generated.markerhelp.go
+index 03d66360..9a007e79 100644
+--- a/pkg/crd/markers/zz_generated.markerhelp.go
++++ b/pkg/crd/markers/zz_generated.markerhelp.go
+@@ -467,3 +467,23 @@ func (XPreserveUnknownFields) Help() *markers.DefinitionHelp {
+ 		FieldHelp: map[string]markers.DetailedHelp{},
+ 	}
+ }
++
++func (XValidation) Help() *markers.DefinitionHelp {
++	return &markers.DefinitionHelp{
++		Category: "CRD validation",
++		DetailedHelp: markers.DetailedHelp{
++			Summary: "marks a field as requiring a value for which a given expression evaluates to true. ",
++			Details: "This marker may be repeated to specify multiple expressions, all of which must evaluate to true.",
++		},
++		FieldHelp: map[string]markers.DetailedHelp{
++			"Rule": {
++				Summary: "",
++				Details: "",
++			},
++			"Message": {
++				Summary: "",
++				Details: "",
++			},
++		},
++	}
++}
+diff --git a/pkg/crd/testdata/cronjob_types.go b/pkg/crd/testdata/cronjob_types.go
+index 80148f1e..77883158 100644
+--- a/pkg/crd/testdata/cronjob_types.go
++++ b/pkg/crd/testdata/cronjob_types.go
+@@ -167,6 +167,11 @@ type CronJobSpec struct {
+ 	// This tests that both unexported and exported inline fields are not skipped in the schema generation
+ 	unexportedStruct `json:",inline"`
+ 	ExportedStruct   `json:",inline"`
++
++	// Test of the expression-based validation rule marker, with optional message.
++	// +kubebuilder:validation:XValidation:rule="self.size() % 2 == 0",message="must have even length"
++	// +kubebuilder:validation:XValidation:rule="true"
++	StringWithEvenLength string `json:"stringWithEvenLength,omitempty"`
+ }
+ 
+ // +kubebuilder:validation:Type=object
+diff --git a/pkg/crd/testdata/testdata.kubebuilder.io_cronjobs.yaml b/pkg/crd/testdata/testdata.kubebuilder.io_cronjobs.yaml
+index af3880b8..59bacc43 100644
+--- a/pkg/crd/testdata/testdata.kubebuilder.io_cronjobs.yaml
++++ b/pkg/crd/testdata/testdata.kubebuilder.io_cronjobs.yaml
+@@ -7255,6 +7255,14 @@ spec:
+                   type: array
+                 description: This tests string slices are allowed as map values.
+                 type: object
++              stringWithEvenLength:
++                description: Test of the expression-based validation rule marker,
++                  with optional message.
++                type: string
++                x-kubernetes-validations:
++                - message: must have even length
++                  rule: self.size() % 2 == 0
++                - rule: "true"
+               structWithSeveralFields:
+                 description: A struct that can only be entirely replaced
+                 properties:
+-- 
+2.34.1
+
